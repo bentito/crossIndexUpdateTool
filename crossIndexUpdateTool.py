@@ -265,7 +265,7 @@ def html_generate(operators_in_all, operators_exist, channel_updates, **kwargs):
             row_cells = []
             with t.add(table_body):
                 table_row = tr()
-                table_row.add(td(operator_name))
+                table_row.add(td(a(operator_name, id='%s' % operator_name, href='#%s' % operator_name)))
                 with table_row:
                     for default, channels, heads, max_ocps, idx_non_common in zip(
                             channel_update.default_channel_per_index,
@@ -388,7 +388,8 @@ def modify_common_by_maxocp(all_channel_updates):
             for max_ocp, channel in zip(max_ocp_per_index, channels):
                 if max_ocp is not None:
                     if version.parse(max_ocp.strip('"')) < version.parse(idx):
-                        channel_update.common_channels.remove(channel[0])
+                        if channel[0] in channel_update.common_channels:
+                            channel_update.common_channels.remove(channel[0])
 
 
 def get_all_channel_updates(connections, all_operators):

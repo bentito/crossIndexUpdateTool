@@ -76,9 +76,9 @@ def channels_across_indexes(connections, operator_name):
     args = (operator_name,)
     query = """
     SELECT c.name, p.default_channel, c.head_operatorbundle_name
-    FROM package p, channel c
+    FROM package p, channel c 
     JOIN package on p.name = c.package_name
-    WHERE package_name = ?
+    WHERE package_name = ? 
     GROUP BY c.name;"""
     if DEBUG:
         print("operator:", operator_name)
@@ -131,7 +131,7 @@ def get_max_ocp(connections, all_channel_updates):
             for channel_head in channel_heads_per_index:
                 args = (channel_head,)
                 query = """SELECT
-                    p.value
+                    p.value 
                 FROM properties p
                 WHERE p.operatorbundle_name = ? AND type = "olm.maxOpenShiftVersion";"""
                 if DEBUG:
@@ -172,7 +172,7 @@ def check_deprecation(connections, all_channel_updates):
             for channel_head in channel_heads_per_index:
                 args = (channel_head,)
                 query = """SELECT
-                    d.operatorbundle_name
+                    d.operatorbundle_name 
                 FROM deprecated d
                 WHERE d.operatorbundle_name = ?;"""
                 if DEBUG:
@@ -204,7 +204,7 @@ def get_all_operators(connections):
     operators = []
     query = """SELECT
         p.name
-    FROM
+    FROM 
         package p;"""
     for index_name, _ in INDEXES.items():
         try:

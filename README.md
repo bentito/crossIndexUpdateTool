@@ -11,6 +11,7 @@ git-lfs (for large file storage in git, to get the indexes)
 `pip install dominate`
 `pip install htmltabletomd`
 `pip install packaging`
+`pip install html-to-json`
 
 ### Run:
 

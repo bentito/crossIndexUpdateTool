@@ -5,6 +5,8 @@ import argparse
 import operator
 
 import htmltabletomd
+import html_to_json
+
 from dominate import document
 from dominate.tags import *
 from dominate.util import raw
@@ -343,6 +345,16 @@ def md_output(operators_in_all, operators_exist, channel_updates, **kwargs):
         f.write(mark_down)
 
 
+def json_output(operators_in_all, operators_exist, channel_updates, **kwargs):
+    doc = html_generate(operators_in_all, operators_exist, channel_updates, **kwargs)
+    # library converting h1 to # in markdown and that won't work in the markdown table cells
+    json = html_to_json.convert_tables(doc.render())
+    suffix = generate_filename_suffix(**kwargs)
+    with open('json_reports/cross_index_update_report_' + suffix + '.json', 'w', encoding="utf-8",
+              errors="xmlcharrefreplace") as f:
+        f.write(str(json))
+
+
 def render_channel_rows(channel_update, channels, default, heads, max_ocps, operator_name, table_data):
     """
     helper for html_generate()
@@ -428,6 +440,9 @@ def main(args):
 
     if args.output == "html":
         html_output(all_operators, all_operators_exist, all_channel_updates, needs_attention=args.needs_attention,
+                    common_only=args.common_only, yes_no=args.yes_no)
+    if args.output == "json":
+        json_output(all_operators, all_operators_exist, all_channel_updates, needs_attention=args.needs_attention,
                     common_only=args.common_only, yes_no=args.yes_no)
     else:
         md_output(all_operators, all_operators_exist, all_channel_updates, needs_attention=args.needs_attention,

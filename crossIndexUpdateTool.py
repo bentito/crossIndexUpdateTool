@@ -3,6 +3,7 @@
 import sqlite3 as sql
 import argparse
 import operator
+from typing import List, Tuple, Any, AnyStr
 
 import htmltabletomd
 import json
@@ -32,6 +33,7 @@ class ChannelUpdate:
         self.common_channels = []
         self.default_channel_per_index = []
         self.channel_heads = []
+        self.channel_non_heads = []
         self.max_ocp_per_channel = []
         self.deprecated_head = []
         self.non_common_channels = []
@@ -70,6 +72,38 @@ def get_default_channels_and_heads(rows):
     return channel_only, default_channels, heads
 
 
+def get_bundles_and_paths_for_pkg(connection, package_name, channel_name):
+    query = """
+    SELECT channel_entry.package_name, channel_entry.channel_name, operatorbundle.name, operatorbundle.bundlepath, 
+        operatorbundle.version
+    FROM operatorbundle 
+    INNER JOIN channel_entry
+    ON operatorbundle.name=channel_entry.operatorbundle_name
+    WHERE channel_entry.package_name = ? AND channel_entry.channel_name = ?;
+    """
+    args = (package_name, channel_name)
+    try:
+        cursor = connection.cursor()
+        cursor.execute(query, args)
+        bundle_name_path: list[tuple[AnyStr, AnyStr]] = []
+        rows = cursor.fetchall()
+        for row in rows:
+            bundle_name_path.append((row[2], row[3]))
+    except sql.Error as err:
+        print('Sql error: %s' % (' '.join(err.args)))
+        print("Exception class is: ", err.__class__)
+        return None
+    return bundle_name_path
+
+
+def get_non_head_bundles(head, bundles_with_paths):
+    bundles = []
+    for bundle_version, _ in bundles_with_paths:
+        bundles.append(bundle_version)
+    bundles.remove(head) if head in bundles else None
+    return bundles
+
+
 def channels_across_indexes(connections, operator_name):
     """
     Determine common channels that exist across all indexes
@@ -102,6 +136,11 @@ def channels_across_indexes(connections, operator_name):
             else:
                 channelUpdate.default_channel_per_index.append(None)
             channelUpdate.channel_heads.append(heads)
+            non_heads_per_channel = []
+            for channel, head in zip(channels_per_index, heads):
+                bundle_names_paths = get_bundles_and_paths_for_pkg(connections[index_name], operator_name, channel[0])
+                non_heads_per_channel.append(get_non_head_bundles(head, bundle_names_paths))
+            channelUpdate.channel_non_heads.append(non_heads_per_channel)
         except sql.Error as err:
             print('Sql error: %s' % (' '.join(err.args)))
             print("Exception class is: ", err.__class__)
@@ -275,10 +314,11 @@ def html_generate(operators_in_all, operators_exist, channel_updates, **kwargs):
                 href = url + "#" + operator_name
                 table_row.add(td(a(operator_name, _class='package-name', id='%s' % operator_name, href='%s' % href)))
                 with table_row:
-                    for default, channels, heads, max_ocps, idx_non_common in zip(
+                    for default, channels, heads, non_heads, max_ocps, idx_non_common in zip(
                             channel_update.default_channel_per_index,
                             channel_update.channels,
                             channel_update.channel_heads,
+                            channel_update.channel_non_heads,
                             channel_update.max_ocp_per_channel,
                             channel_update.non_common_channels):
                         table_data = td(_class="parentCell")
@@ -289,14 +329,17 @@ def html_generate(operators_in_all, operators_exist, channel_updates, **kwargs):
                                 table_data.add(p("Operator not published in this index"))
                                 row_cells.append(table_data)
                                 continue
-                            render_channel_rows(channel_update, channels, default, heads, max_ocps, operator_name,
+                            render_channel_rows(channel_update, channels, default, heads, non_heads, max_ocps,
+                                                operator_name,
                                                 table_data)
                         elif len(channel_update.common_channels) == 0:
                             table_data.add("No common channels across range")
-                            render_channel_rows(channel_update, channels, default, heads, max_ocps, operator_name,
+                            render_channel_rows(channel_update, channels, default, heads, non_heads, max_ocps,
+                                                operator_name,
                                                 table_data)
                         else:
-                            render_channel_rows(channel_update, channels, default, heads, max_ocps, operator_name,
+                            render_channel_rows(channel_update, channels, default, heads, non_heads, max_ocps,
+                                                operator_name,
                                                 table_data)
                             attention_row = False
                             yes_row = True
@@ -374,13 +417,14 @@ def json_generate(operators_in_all, operators_exist, channel_updates):
 
     for operator_name, operator_exists, channel_update in sorted(
             zip(operators_in_all, operators_exist, channel_updates), key=operator.itemgetter(0)):
-        for index, (default, channels, heads, max_ocps, idx_non_common) in enumerate(zip(
+        for index, (default, channels, heads, non_heads, max_ocps, idx_non_common) in enumerate(zip(
                 channel_update.default_channel_per_index,
                 channel_update.channels,
                 channel_update.channel_heads,
+                channel_update.channel_non_heads,
                 channel_update.max_ocp_per_channel,
                 channel_update.non_common_channels)):
-            for channel, max_ocp, head in zip(channels, max_ocps, heads):
+            for channel, max_ocp, head, non_heads_per_channel in zip(channels, max_ocps, heads, non_heads):
                 entry = {}
                 channel = channel[0]
                 if channel in channel_update.common_channels:
@@ -396,17 +440,19 @@ def json_generate(operators_in_all, operators_exist, channel_updates):
                 entry['ocpVersion'] = list(INDEXES)[index]
                 entry['channel'] = channel
                 entry['currentVersion'] = head_bundle_version
+                for idx, other_avail_version in enumerate(non_heads_per_channel):
+                    entry['otherAvailableVersion' + str(idx)] = other_avail_version
                 entry['isCommon'] = isCommon
 
                 data["data"].append(entry)
     return json.dumps(data, indent=indent)
 
 
-def render_channel_rows(channel_update, channels, default, heads, max_ocps, operator_name, table_data):
+def render_channel_rows(channel_update, channels, default, heads, non_heads, max_ocps, operator_name, table_data):
     """
     helper for html_generate()
     """
-    for channel, max_ocp, head in zip(channels, max_ocps, heads):
+    for channel, max_ocp, head, non_heads_per_channel in zip(channels, max_ocps, heads, non_heads):
         channel = channel[0]
         color_class = set_color_class_common(channel, channel_update)
         if channel == default:
@@ -418,6 +464,10 @@ def render_channel_rows(channel_update, channels, default, heads, max_ocps, oper
         if max_ocp is not None:
             head_bundle_version += " (maxOCP = " + max_ocp + ")"
         table_data.add(p(raw(arrow_leader), span("CURRENT VERSION: ", _class="small"), head_bundle_version))
+        for non_head in non_heads_per_channel:
+            bundle_version = non_head.replace(operator_name + ".", "")
+            table_data.add(p(raw(arrow_leader + " " + arrow_leader), span("ALSO AVAILABLE VERSION: ", _class="small"),
+                             bundle_version))
 
 
 def set_color_class_common(channel, channel_update):

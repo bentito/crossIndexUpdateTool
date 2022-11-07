@@ -408,6 +408,12 @@ def json_output(operators_in_all, operators_exist, channel_updates, **kwargs):
         f.write(str(json_))
 
 
+def version_parse(bundle_name_with_version):
+    # taking advantage of str.find() returning -1 here, will leave input string untouched if no "." in the version name
+    version = bundle_name_with_version[bundle_name_with_version.find('.') + 1:]
+    return version
+
+
 def json_generate(operators_in_all, operators_exist, channel_updates):
     """
     optionally generate JSON for output.
@@ -433,7 +439,7 @@ def json_generate(operators_in_all, operators_exist, channel_updates):
                     isCommon = "false"
                 if channel == default:
                     channel += ' (default)'
-                head_bundle_version = head.replace(operator_name + ".", "")
+                head_bundle_version = version_parse(head)
                 if max_ocp is not None:
                     head_bundle_version += " (maxOCP = " + max_ocp + ")"
                 entry['name'] = operator_name
@@ -441,7 +447,7 @@ def json_generate(operators_in_all, operators_exist, channel_updates):
                 entry['channel'] = channel
                 entry['currentVersion'] = head_bundle_version
                 for idx, other_avail_version in enumerate(non_heads_per_channel):
-                    entry['otherAvailableVersion' + str(idx)] = other_avail_version
+                    entry['otherAvailableVersion' + str(idx)] = version_parse(other_avail_version)
                 entry['isCommon'] = isCommon
 
                 data["data"].append(entry)
@@ -460,12 +466,12 @@ def render_channel_rows(channel_update, channels, default, heads, non_heads, max
         else:
             table_data.add(p(span("CHANNEL: ", _class="small"), b(channel), _class=color_class))
         arrow_leader = "&ensp;&rarr; "
-        head_bundle_version = head.replace(operator_name + ".", "")
+        head_bundle_version = version_parse(head)
         if max_ocp is not None:
             head_bundle_version += " (maxOCP = " + max_ocp + ")"
         table_data.add(p(raw(arrow_leader), span("CURRENT VERSION: ", _class="small"), head_bundle_version))
         for non_head in non_heads_per_channel:
-            bundle_version = non_head.replace(operator_name + ".", "")
+            bundle_version = version_parse(non_head)
             table_data.add(p(raw(arrow_leader + " " + arrow_leader), span("ALSO AVAILABLE VERSION: ", _class="small"),
                              bundle_version))
 
